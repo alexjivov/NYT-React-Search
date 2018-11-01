@@ -1,47 +1,63 @@
-const express = require ('express'); //Sever
-const bodyParser = require('body-parser') //JSON Middleware
-const logger = require('morgan'); // REST Logger
-const mongoose = require('mongoose'); // Mongo ORM
-const routes = require("./routes");
-let db = require("./models"); // Require all models
+// Dependecies
+const express = require("express");
+const mongoose = require("mongoose");
+const bluebird = require("bluebird");
+const bodyParser = require("body-parser");
+const path = require("path");
 
+// Set up a default port, configure mongoose, configure our middleware
+const PORT = process.env.PORT || 3001;
+mongoose.Promise = bluebird;
+const app = express();
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
 
-//Connections
-let PORT = process.env.PORT || 8080;
-let mongooseConnection = mongoose.connection;
+// Serve up static assets if in production (running on Heroku)
+if (process.env.NODE_ENV === "production") {
+  app.use(express.static("client/build"));
+} else {
+  app.use(express.static(__dirname + "/client/public"));
+}
 
-//Start Express
-let app = express();
-
-app.use(bodyParser.json({limit: '50mb'}));
-app.use(bodyParser.urlencoded({limit: '50mb', extended: true})); // JSON Interactions between Client and Server
-app.use(express.static("client/build")); //For static React pages
-app.use(bodyParser.text());
-app.use(bodyParser.json({type: "application/vnd.api+json"}));
-
-mongoose.Promise = global.Promise; //Sets up promises with Mongoose
-
-// NEED TO ADD MONGOOSE DB FROM HEROKU
-mongoose.connect(
-    process.env.MONGODB_URI || "mongodb: "
-)
-
-mongooseConnection.once('open', function (req,res,next) {
-    console.log('Successfully Connected to Mongo DB !')
+// enable CORS, use:
+// https://enable-cors.org/server_expressjs.html
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*')
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
+  next();
 });
 
-var cors = require('cors');
-app.use(function(req,res,next) {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", 'GET,PUT,POST,DELETE,OPTIONS');
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With,Content-Type, Accept");
-    next();
+// Routing
+var articlesController = require("./server/controllers/article-controller");
+var router = new express.Router();
+// Define any API routes first
+// Get saved articles
+router.get("/api/saved", articlesController.find);
+// Save articles
+router.post("/api/saved", articlesController.insert);
+// delete saved articles
+router.delete("/api/saved/:id", articlesController.delete);
+// Send every other request to the React app
+router.get("/*", function(req, res) {
+  res.sendFile(path.join(__dirname, "./client/build/index.html"));
 });
-app.use(cors());
 
+app.use(router);
 
-app.use(routes); // Add both API and view routes
+// Connect mongoose to our database
+const db = process.env.MONGODB_URI || "mongodb://localhost/nyt-react";
+mongoose.connect(db, function(error) {
+  // Log any errors connecting with mongoose
+  if (error) {
+    console.error(error);
+  }
+  // Or log a success message
+  else {
+    console.log("mongoose connection is successful");
+  }
+});
 
+// Start the server
 app.listen(PORT, function() {
-    console.log('API Server now listening on PORT ${PORT}!');
+  console.log(`🌎 ==> Server now on port ${PORT}!`);
 });
